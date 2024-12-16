@@ -87,6 +87,11 @@ returns it as a list of edges as pairs of nodes."
     (cons (list (cdr (assoc end prev)) end)
 	  (reconstruct-path prev (cdr (assoc end prev))))))
 
+(defun all-visited (prev end)
+  (loop for prev-node in (cdr (assoc end prev))
+        collect prev-node
+        append (all-visited prev prev-node)))
+
 #|
 (defmethod find-shortest-path ((graph graph) (n1 integer) (n2 integer))
   "Dijkstra's algorithm for finding the shortest path between two nodes."
@@ -127,27 +132,31 @@ returns it as a list of edges as pairs of nodes."
            nodes)
       (fib-heap:decrease-key distances n1 0)
       (loop until (null nodes) do
-           (multiple-value-bind (next d)
-               (fib-heap:extract-min distances)
-             (when (= d most-positive-fixnum)
-               (return nil))
-             (when (= next n2)
-               (return-from find-shortest-path
-                 (values (nreverse (reconstruct-path previous n2)) d)))
-             (setq nodes (delete next nodes))
-	     (dolist (neighbor (if (directed? graph)
-				   (outbound-neighbors graph next)
-				   (neighbors graph next)))
-               (when (consp neighbor) ;; typed graph
-                 (setq neighbor (cdr neighbor)))
-               (when (fib-heap:lookup-node distances neighbor)
-                 (let ((distance (if use-weights-p
-                                     (+ d (edge-weight graph next neighbor))
-                                     (1+ d))))
-                   (when (< distance (fib-heap:lookup-node distances neighbor))
-                     (fib-heap:decrease-key distances neighbor distance)
-                     (setf (cdr (assoc neighbor previous)) next)))))
-             next)))))
+        (multiple-value-bind (next d)
+            (fib-heap:extract-min distances)
+          (when (= d most-positive-fixnum)
+            (return nil))
+          (when (= next n2)
+            (return-from find-shortest-path
+              (values (cons n2 (all-visited previous n2)) d)))
+          (setq nodes (delete next nodes))
+          (dolist (neighbor (if (directed? graph)
+                                (outbound-neighbors graph next)
+                                (neighbors graph next)))
+            (when (consp neighbor) ;; typed graph
+              (setq neighbor (cdr neighbor)))
+            (when (fib-heap:lookup-node distances neighbor)
+              (let ((distance (if use-weights-p
+                                  (+ d (edge-weight graph next neighbor))
+                                  (1+ d))))
+                (cond
+                  ((< distance (fib-heap:lookup-node distances neighbor))
+                   (fib-heap:decrease-key distances neighbor distance)
+                   (setf (cdr (assoc neighbor previous)) (list next)))
+                  ((= distance (fib-heap:lookup-node distances neighbor))
+                   (fib-heap:decrease-key distances neighbor distance)
+                   (push next (cdr (assoc neighbor previous))))))))
+          next)))))
 
 (defmethod find-shortest-path ((graph graph) n1 n2 &key use-weights-p)
   (find-shortest-path graph
